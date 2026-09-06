@@ -30,7 +30,7 @@ VeSBP не проводит платежи, не списывает денежн
 
 ## Установка
 
-Готовые APK будут публиковаться в разделе [Releases](https://github.com/Q3D-Tech/VeSBP/releases). Исходный код приложения в этом репозитории не публикуется.
+Готовые APK будут публиковаться в разделе [Releases](https://github.com/Q3D-Tech/VeSBP/releases).
 
 ## Ссылки
 
