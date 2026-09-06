@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="app/src/main/res/drawable-nodpi/vesbp_launcher_art.png" width="112" alt="VeSBP">
+  <img src="assets/vesbp-logo.png" width="112" alt="VeSBP">
 </p>
 
 <h1 align="center">VeSBP</h1>
