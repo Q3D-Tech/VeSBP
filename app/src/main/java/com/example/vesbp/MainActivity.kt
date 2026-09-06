@@ -85,7 +85,6 @@ private const val THEME_SNAPSHOT_SCALE = 0.60f
 private const val GITHUB_URL = "https://github.com/Q3D-Tech/VeSBP"
 private const val TELEGRAM_URL = "https://t.me/verisbp"
 private const val VERISHOP_URL = "https://t.me/VeriShopBot"
-private const val DEBUG_UPDATE_PREVIEW_EXTRA = "vesbp_update_preview"
 
 private data class SupportAddress(val asset: String, val network: String, val address: String)
 
@@ -110,22 +109,19 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { VeSbpRoot(incomingUrl(intent), debugUpdatePreview(intent)) }
+        setContent { VeSbpRoot(incomingUrl(intent)) }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        setContent { VeSbpRoot(incomingUrl(intent), debugUpdatePreview(intent)) }
+        setContent { VeSbpRoot(incomingUrl(intent)) }
     }
 }
-
-private fun debugUpdatePreview(intent: Intent?): String? =
-    intent?.getStringExtra(DEBUG_UPDATE_PREVIEW_EXTRA)?.takeIf { BuildConfig.DEBUG }
 
 private enum class ThemeMode { LIGHT, SYSTEM, DARK }
 
 @Composable
-private fun VeSbpRoot(initialUrl: String?, debugUpdatePreview: String? = null) {
+private fun VeSbpRoot(initialUrl: String?) {
     val context = LocalContext.current
     val view = LocalView.current
     val settings = remember(context) {
@@ -150,7 +146,7 @@ private fun VeSbpRoot(initialUrl: String?, debugUpdatePreview: String? = null) {
         controller.isAppearanceLightNavigationBars = !dark
     }
     VeSBPTheme(darkTheme = dark) {
-        VeSbpApp(initialUrl, themeMode, debugUpdatePreview) { selectedMode ->
+        VeSbpApp(initialUrl, themeMode) { selectedMode ->
             if (selectedMode != themeMode) {
                 (context as? Activity)?.crossfadeTheme(view) {
                     themeMode = selectedMode
@@ -271,7 +267,6 @@ private fun formatFileSize(bytes: Long): String = when {
 private fun VeSbpApp(
     initialUrl: String?,
     themeMode: ThemeMode,
-    debugUpdatePreview: String?,
     onThemeChange: (ThemeMode) -> Unit,
 ) {
     var link by rememberSaveable { mutableStateOf(nspkUrl(initialUrl)) }
@@ -293,32 +288,7 @@ private fun VeSbpApp(
             copied = false
         }
     }
-    LaunchedEffect(updateManager, debugUpdatePreview) {
-        if (debugUpdatePreview != null) {
-            val sampleUpdate = AppUpdate(
-                version = "1.0.1",
-                publishedAt = "2026-09-06T12:00:00Z",
-                notes = """
-                    В версии 1.0.1 обновлён механизм получения новых релизов.
-
-                    - Добавлена проверка последней версии VeSBP через GitHub Releases.
-                    - При наличии новой версии под значком информации появляется статус обновления.
-                    - Скачивание показывает реальный объём файла, скорость и оставшееся время.
-                    - После загрузки обновление можно установить из информации о приложении.
-                    - Добавлена подсказка для разрешения установки APK из VeSBP в настройках Android.
-                    - Улучшены оформление статуса и отображение длинного списка изменений.
-
-                    Это демонстрационный текст для проверки полного раскрытия описания обновления.
-                """.trimIndent(),
-                downloadUrl = "",
-                assetName = "VeSBP-1.0.1-universal.apk",
-            )
-            updateState = when (debugUpdatePreview) {
-                "downloaded" -> UpdateState.Downloaded(sampleUpdate, File(context.filesDir, "updates/demo.apk"))
-                else -> UpdateState.Available(sampleUpdate)
-            }
-            return@LaunchedEffect
-        }
+    LaunchedEffect(updateManager) {
         val savedUpdate = updateManager.downloadedUpdate()
             ?.takeIf { updateManager.isNewerThanInstalled(it.first.version, BuildConfig.VERSION_NAME) }
         if (savedUpdate != null) updateState = UpdateState.Downloaded(savedUpdate.first, savedUpdate.second)
