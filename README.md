@@ -44,17 +44,17 @@ VeSBP не проводит платежи, не списывает денежн
 
 ## Поддержать проект ❤️
 
-Будем рады вашей поддержке. Пожалуйста, отправляйте актив только через указанную сеть.
+Будем рады вашей поддержке. Пожалуйста, отправляйте актив только через указанную сеть. Нажмите на QR-код, чтобы открыть его в полном размере.
 
-| Актив | Сеть | Адрес |
-| --- | --- | --- |
-| USDT | TRC20 | `THDdetaN5hyL8ZxctC75aTBSDT4bDUKtYC` |
-| USDT | ERC20 / BEP20 / Polygon | `0x4ead462500337829bB6cDEB437187CC4eBE755dC` |
-| USDT | Solana | `EdURB1MUpTQjUi4UWLBpw7tQARWkcHCm3tSzBFnYHHB6` |
-| USDC | Arbitrum One / ERC20 / Base | `0x4ead462500337829bB6cDEB437187CC4eBE755dC` |
-| ETH | ERC20 | `0x4ead462500337829bB6cDEB437187CC4eBE755dC` |
-| POL | Polygon | `0x4ead462500337829bB6cDEB437187CC4eBE755dC` |
-| BTC | Bitcoin | `bc1q6k5xqdvwt9mmy38d9fnmwsk6efnrn1r8jqe0mj` |
-| TRX | Tron | `THDdetaN5hyL8ZxctC75aTBSDT4bDUKtYC` |
-| SOL | Solana | `EdURB1MUpTQjUi4UWLBpw7tQARWkcHCm3tSzBFnYHHB6` |
-| GRAM | TON | `UQBIET64WYFty_VVPfH0NAruWnan91H6fbt81VSY0GN5i1Q8` |
+| Актив | Сеть | Адрес | QR-код |
+| --- | --- | --- | --- |
+| USDT | TRC20 | `THDdetaN5hyL8ZxctC75aTBSDT4bDUKtYC` | <a href="assets/support-qr/usdt-trc20.png"><img src="assets/support-qr/usdt-trc20.png" width="76" alt="USDT TRC20 QR"></a> |
+| USDT | ERC20 / BEP20 / Polygon | `0x4ead462500337829bB6cDEB437187CC4eBE755dC` | <a href="assets/support-qr/usdt-evm.png"><img src="assets/support-qr/usdt-evm.png" width="76" alt="USDT EVM QR"></a> |
+| USDT | Solana | `EdURB1MUpTQjUi4UWLBpw7tQARWkcHCm3tSzBFnYHHB6` | <a href="assets/support-qr/usdt-solana.png"><img src="assets/support-qr/usdt-solana.png" width="76" alt="USDT Solana QR"></a> |
+| USDC | Arbitrum One / ERC20 / Base | `0x4ead462500337829bB6cDEB437187CC4eBE755dC` | <a href="assets/support-qr/usdc-evm.png"><img src="assets/support-qr/usdc-evm.png" width="76" alt="USDC EVM QR"></a> |
+| ETH | ERC20 | `0x4ead462500337829bB6cDEB437187CC4eBE755dC` | <a href="assets/support-qr/eth-erc20.png"><img src="assets/support-qr/eth-erc20.png" width="76" alt="ETH ERC20 QR"></a> |
+| POL | Polygon | `0x4ead462500337829bB6cDEB437187CC4eBE755dC` | <a href="assets/support-qr/pol-polygon.png"><img src="assets/support-qr/pol-polygon.png" width="76" alt="POL Polygon QR"></a> |
+| BTC | Bitcoin | `bc1q6k5xqdvwt9mmy38d9fnmwsk6efnrn1r8jqe0mj` | <a href="assets/support-qr/btc-bitcoin.png"><img src="assets/support-qr/btc-bitcoin.png" width="76" alt="BTC QR"></a> |
+| TRX | Tron | `THDdetaN5hyL8ZxctC75aTBSDT4bDUKtYC` | <a href="assets/support-qr/trx-tron.png"><img src="assets/support-qr/trx-tron.png" width="76" alt="TRX QR"></a> |
+| SOL | Solana | `EdURB1MUpTQjUi4UWLBpw7tQARWkcHCm3tSzBFnYHHB6` | <a href="assets/support-qr/sol-solana.png"><img src="assets/support-qr/sol-solana.png" width="76" alt="SOL QR"></a> |
+| GRAM | TON | `UQBIET64WYFty_VVPfH0NAruWnan91H6fbt81VSY0GN5i1Q8` | <a href="assets/support-qr/gram-ton.png"><img src="assets/support-qr/gram-ton.png" width="76" alt="GRAM TON QR"></a> |
