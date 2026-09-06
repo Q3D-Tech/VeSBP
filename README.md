@@ -35,7 +35,7 @@ VeSBP не проводит платежи, не списывает денежн
 ## Ссылки
 
 - [GitHub](https://github.com/Q3D-Tech/VeSBP)
-- [Telegram-канал VeSBP](https://t.me/verisbp)
+- [Telegram-группа VeSBP](https://t.me/verisbp)
 - [VeriShop](https://t.me/VeriShopBot)
 
 ## Лицензия
