@@ -84,6 +84,7 @@ private const val THEME_SNAPSHOT_SCALE = 0.60f
 private const val GITHUB_URL = "https://github.com/Q3D-Tech/VeSBP"
 private const val TELEGRAM_URL = "https://t.me/verisbp"
 private const val VERISHOP_URL = "https://t.me/VeriShopBot"
+private const val DEBUG_UPDATE_PREVIEW_EXTRA = "vesbp_update_preview"
 
 private data class SupportAddress(val asset: String, val network: String, val address: String)
 
@@ -108,19 +109,22 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { VeSbpRoot(incomingUrl(intent)) }
+        setContent { VeSbpRoot(incomingUrl(intent), debugUpdatePreview(intent)) }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        setContent { VeSbpRoot(incomingUrl(intent)) }
+        setContent { VeSbpRoot(incomingUrl(intent), debugUpdatePreview(intent)) }
     }
 }
+
+private fun debugUpdatePreview(intent: Intent?): String? =
+    intent?.getStringExtra(DEBUG_UPDATE_PREVIEW_EXTRA)?.takeIf { BuildConfig.DEBUG }
 
 private enum class ThemeMode { LIGHT, SYSTEM, DARK }
 
 @Composable
-private fun VeSbpRoot(initialUrl: String?) {
+private fun VeSbpRoot(initialUrl: String?, debugUpdatePreview: String? = null) {
     val context = LocalContext.current
     val view = LocalView.current
     val settings = remember(context) {
@@ -145,7 +149,7 @@ private fun VeSbpRoot(initialUrl: String?) {
         controller.isAppearanceLightNavigationBars = !dark
     }
     VeSBPTheme(darkTheme = dark) {
-        VeSbpApp(initialUrl, themeMode) { selectedMode ->
+        VeSbpApp(initialUrl, themeMode, debugUpdatePreview) { selectedMode ->
             if (selectedMode != themeMode) {
                 (context as? Activity)?.crossfadeTheme(view) {
                     themeMode = selectedMode
@@ -263,7 +267,12 @@ private fun formatFileSize(bytes: Long): String = when {
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
-private fun VeSbpApp(initialUrl: String?, themeMode: ThemeMode, onThemeChange: (ThemeMode) -> Unit) {
+private fun VeSbpApp(
+    initialUrl: String?,
+    themeMode: ThemeMode,
+    debugUpdatePreview: String?,
+    onThemeChange: (ThemeMode) -> Unit,
+) {
     var link by rememberSaveable { mutableStateOf(nspkUrl(initialUrl)) }
     var bankMenu by remember { mutableStateOf(false) }
     var copied by remember { mutableStateOf(false) }
@@ -283,7 +292,21 @@ private fun VeSbpApp(initialUrl: String?, themeMode: ThemeMode, onThemeChange: (
             copied = false
         }
     }
-    LaunchedEffect(updateManager) {
+    LaunchedEffect(updateManager, debugUpdatePreview) {
+        if (debugUpdatePreview != null) {
+            val sampleUpdate = AppUpdate(
+                version = "1.0.1",
+                publishedAt = "2026-09-06T12:00:00Z",
+                notes = "Улучшена проверка обновлений и процесс установки новой версии.",
+                downloadUrl = "",
+                assetName = "VeSBP-1.0.1-universal.apk",
+            )
+            updateState = when (debugUpdatePreview) {
+                "downloaded" -> UpdateState.Downloaded(sampleUpdate, File(context.filesDir, "updates/demo.apk"))
+                else -> UpdateState.Available(sampleUpdate)
+            }
+            return@LaunchedEffect
+        }
         val savedUpdate = updateManager.downloadedUpdate()
             ?.takeIf { updateManager.isNewerThanInstalled(it.first.version, BuildConfig.VERSION_NAME) }
         if (savedUpdate != null) updateState = UpdateState.Downloaded(savedUpdate.first, savedUpdate.second)
