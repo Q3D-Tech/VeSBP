@@ -51,6 +51,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -332,8 +333,10 @@ private fun VeSbpApp(
                 updateScope.launch { updateState = UpdateState.Downloading(update, progress) }
             }.onSuccess { apk ->
                 updateState = UpdateState.Downloaded(update, apk)
+                showUpdateProgress = false
             }.onFailure {
                 updateState = UpdateState.Failed("Не удалось скачать обновление")
+                showUpdateProgress = false
             }
         }
     }
@@ -342,7 +345,6 @@ private fun VeSbpApp(
             showInstallPermission = true
             return
         }
-        showUpdateProgress = true
         updateState = UpdateState.Installing(update, apkFile)
         updateScope.launch {
             delay(160)
@@ -467,7 +469,7 @@ private fun SocialLinks(updateState: UpdateState, onInfo: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     val shape = RoundedCornerShape(50.dp)
     val updateMarker = when (updateState) {
-        is UpdateState.Available -> "Доступно обновление"
+        is UpdateState.Available -> "Найдено обновление"
         is UpdateState.Downloaded -> "Обновление скачано"
         else -> null
     }
@@ -476,46 +478,72 @@ private fun SocialLinks(updateState: UpdateState, onInfo: () -> Unit) {
         is UpdateState.Downloaded -> Color(0xFF16914B)
         else -> colors.outline.copy(alpha = .55f)
     }
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.Top
+    Box(
+        modifier = Modifier.fillMaxWidth().height(if (updateMarker == null) 46.dp else 112.dp),
+        contentAlignment = Alignment.TopCenter
     ) {
-        IconButton(
-            onClick = { openExternalUrl(context, GITHUB_URL) },
-            modifier = Modifier.size(46.dp).background(colors.surfaceVariant, shape).border(1.dp, colors.outline.copy(alpha = .55f), shape)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Top,
         ) {
-            Icon(painterResource(R.drawable.ic_github), contentDescription = "GitHub", tint = colors.onSurface, modifier = Modifier.size(22.dp))
-        }
-        IconButton(
-            onClick = { openExternalUrl(context, TELEGRAM_URL) },
-            modifier = Modifier.size(46.dp).background(colors.surfaceVariant, shape).border(1.dp, colors.outline.copy(alpha = .55f), shape)
-        ) {
-            Icon(painterResource(R.drawable.ic_telegram), contentDescription = "Telegram", tint = Color(0xFF229ED9), modifier = Modifier.size(23.dp))
-        }
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            IconButton(
+                onClick = { openExternalUrl(context, GITHUB_URL) },
+                modifier = Modifier.size(46.dp).background(colors.surfaceVariant, shape).border(1.dp, colors.outline.copy(alpha = .55f), shape)
+            ) {
+                Icon(painterResource(R.drawable.ic_github), contentDescription = "GitHub", tint = colors.onSurface, modifier = Modifier.size(22.dp))
+            }
+            IconButton(
+                onClick = { openExternalUrl(context, TELEGRAM_URL) },
+                modifier = Modifier.size(46.dp).background(colors.surfaceVariant, shape).border(1.dp, colors.outline.copy(alpha = .55f), shape)
+            ) {
+                Icon(painterResource(R.drawable.ic_telegram), contentDescription = "Telegram", tint = Color(0xFF229ED9), modifier = Modifier.size(23.dp))
+            }
             IconButton(
                 onClick = onInfo,
                 modifier = Modifier.size(46.dp).background(colors.surfaceVariant, shape).border(1.5.dp, infoBorder, shape)
             ) {
                 Icon(Icons.Outlined.Info, contentDescription = "О приложении", tint = colors.onSurface.copy(alpha = .78f), modifier = Modifier.size(23.dp))
             }
-            if (updateMarker != null) {
-                Spacer(Modifier.height(5.dp))
-                Text(
-                    updateMarker,
-                    modifier = Modifier
-                        .background(infoBorder.copy(alpha = .14f), RoundedCornerShape(50.dp))
-                        .border(1.dp, infoBorder.copy(alpha = .36f), RoundedCornerShape(50.dp))
-                        .clickable { onInfo() }
-                        .padding(horizontal = 10.dp, vertical = 5.dp),
-                    color = infoBorder,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                )
-            }
         }
+        if (updateMarker != null) {
+            UpdateBubble(
+                label = updateMarker,
+                color = infoBorder,
+                modifier = Modifier.align(Alignment.TopCenter).offset(x = 58.dp, y = 46.dp),
+                onClick = onInfo,
+            )
+        }
+    }
+}
+
+@Composable
+private fun UpdateBubble(label: String, color: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val bubbleShape = RoundedCornerShape(16.dp)
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Spacer(Modifier.height(9.dp))
+        Canvas(Modifier.width(38.dp).height(13.dp)) {
+            val middle = size.width / 2f
+            val path = Path().apply {
+                moveTo(3.dp.toPx(), size.height)
+                cubicTo(size.width * .24f, size.height * .78f, middle - 4.dp.toPx(), 6.dp.toPx(), middle, 1.dp.toPx())
+                cubicTo(middle + 4.dp.toPx(), 6.dp.toPx(), size.width * .76f, size.height * .78f, size.width - 3.dp.toPx(), size.height)
+                close()
+            }
+            drawPath(path, color.copy(alpha = .14f))
+        }
+        Text(
+            label,
+            modifier = Modifier
+                .background(color.copy(alpha = .14f), bubbleShape)
+                .border(1.dp, color.copy(alpha = .44f), bubbleShape)
+                .clickable { onClick() }
+                .padding(horizontal = 12.dp, vertical = 7.dp),
+            color = color,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+        )
     }
 }
 
@@ -666,62 +694,44 @@ private fun UpdateNotes(notes: String) {
 
 @Composable
 private fun UpdateProgressDialog(updateState: UpdateState, onDismiss: () -> Unit) {
+    val downloading = updateState as? UpdateState.Downloading ?: return
     val colors = MaterialTheme.colorScheme
-    val downloading = updateState as? UpdateState.Downloading
-    val isInstalling = updateState is UpdateState.Installing
-    val isDownloaded = updateState is UpdateState.Downloaded
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(24.dp),
         containerColor = colors.surface,
         titleContentColor = colors.onSurface,
         textContentColor = colors.onSurface.copy(alpha = .72f),
-        title = { Text(if (isInstalling) "Установка обновления" else "Обновление VeSBP", fontWeight = FontWeight.Bold) },
+        title = { Text("Скачивание обновления", fontWeight = FontWeight.Bold) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                UpdateSteps(downloading != null, isInstalling, isDownloaded)
-                when {
-                    downloading != null -> DownloadingStatus(downloading.progress)
-                    isInstalling -> Text("Открываем установщик Android…")
-                    isDownloaded -> Text("Обновление скачано. Нажмите «Установить» в информации о приложении.")
-                    updateState is UpdateState.Failed -> Text(updateState.message, color = colors.error)
-                    else -> Text("Подготавливаем обновление…")
-                }
-            }
+            DownloadingStatus(downloading.progress)
         },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Готово", color = colors.primary) }
-        }
+        confirmButton = {},
     )
-}
-
-@Composable
-private fun UpdateSteps(downloading: Boolean, installing: Boolean, downloaded: Boolean) {
-    val colors = MaterialTheme.colorScheme
-    val activeColor = if (downloaded) Color(0xFF16914B) else colors.primary
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text("Подготовка", color = if (downloading || installing || downloaded) activeColor else colors.onSurface.copy(alpha = .48f), fontSize = 11.sp)
-        Text("Скачивание", color = if (downloading || installing || downloaded) activeColor else colors.onSurface.copy(alpha = .48f), fontSize = 11.sp)
-        Text("Установка", color = if (installing) activeColor else colors.onSurface.copy(alpha = .48f), fontSize = 11.sp)
-    }
 }
 
 @Composable
 private fun DownloadingStatus(progress: DownloadProgress) {
     val colors = MaterialTheme.colorScheme
     val fraction = if (progress.totalBytes > 0) (progress.downloadedBytes.toFloat() / progress.totalBytes).coerceIn(0f, 1f) else null
-    if (fraction == null) {
-        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-    } else {
-        LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (progress.downloadedBytes == 0L) {
+            Text("Подготавливаем скачивание…", color = colors.onSurface.copy(alpha = .72f))
+        } else {
+            if (fraction == null) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            } else {
+                LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
+            }
+            val amount = if (progress.totalBytes > 0) "${formatFileSize(progress.downloadedBytes)} из ${formatFileSize(progress.totalBytes)}" else formatFileSize(progress.downloadedBytes)
+            val speed = if (progress.bytesPerSecond > 0) " · ${formatFileSize(progress.bytesPerSecond)}/с" else ""
+            val remaining = if (progress.totalBytes > 0 && progress.bytesPerSecond > 0) {
+                val seconds = ((progress.totalBytes - progress.downloadedBytes) / progress.bytesPerSecond).coerceAtLeast(0)
+                " · осталось ${seconds} с"
+            } else ""
+            Text("$amount$speed$remaining", color = colors.onSurface.copy(alpha = .68f), fontSize = 12.sp)
+        }
     }
-    val amount = if (progress.totalBytes > 0) "${formatFileSize(progress.downloadedBytes)} из ${formatFileSize(progress.totalBytes)}" else formatFileSize(progress.downloadedBytes)
-    val speed = if (progress.bytesPerSecond > 0) " · ${formatFileSize(progress.bytesPerSecond)}/с" else ""
-    val remaining = if (progress.totalBytes > 0 && progress.bytesPerSecond > 0) {
-        val seconds = ((progress.totalBytes - progress.downloadedBytes) / progress.bytesPerSecond).coerceAtLeast(0)
-        " · осталось ${seconds} с"
-    } else ""
-    Text("$amount$speed$remaining", color = colors.onSurface.copy(alpha = .68f), fontSize = 12.sp)
 }
 
 @Composable
