@@ -18,7 +18,9 @@ import android.view.ViewGroup
 import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
+import android.widget.MediaController
 import android.widget.Toast
+import android.widget.VideoView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -63,6 +65,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.view.WindowCompat
 import androidx.core.content.FileProvider
 import com.example.vesbp.ui.theme.VeSBPTheme
@@ -273,6 +278,7 @@ private fun VeSbpApp(
     var bankMenu by remember { mutableStateOf(false) }
     var copied by remember { mutableStateOf(false) }
     var showHelp by rememberSaveable { mutableStateOf(false) }
+    var showVideoGuide by rememberSaveable { mutableStateOf(false) }
     var showAbout by rememberSaveable { mutableStateOf(false) }
     var showUpdateProgress by rememberSaveable { mutableStateOf(false) }
     var showInstallPermission by rememberSaveable { mutableStateOf(false) }
@@ -408,7 +414,16 @@ private fun VeSbpApp(
     }
 
     if (showHelp) {
-        HelpDialog(onDismiss = { showHelp = false })
+        HelpDialog(
+            onDismiss = { showHelp = false },
+            onShowVideo = {
+                showHelp = false
+                showVideoGuide = true
+            }
+        )
+    }
+    if (showVideoGuide) {
+        VideoGuideDialog(onDismiss = { showVideoGuide = false })
     }
     if (showAbout) {
         AboutDialog(
@@ -732,7 +747,7 @@ private fun InstallPermissionDialog(onDismiss: () -> Unit, onOpenSettings: () ->
 }
 
 @Composable
-private fun HelpDialog(onDismiss: () -> Unit) {
+private fun HelpDialog(onDismiss: () -> Unit, onShowVideo: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -747,6 +762,11 @@ private fun HelpDialog(onDismiss: () -> Unit) {
                 Text("1. При оплате через СБП выберите банк, который сейчас выбран в VeSBP (например, Углеметбанк).")
                 Text("2. Откройте сформированную ссылку в VeSBP. Если приложение не предлагается, используйте «Поделиться → VeSBP».")
                 Text("3. Отсканируйте QR-код с другого устройства или скопируйте платёжную ссылку.")
+                FilledTonalButton(
+                    onClick = onShowVideo,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp)
+                ) { Text("Смотреть видеогайд") }
                 Text("VeSBP не проводит платёж, не списывает средства и не получает доступ к банковскому аккаунту.", color = colors.onSurface.copy(alpha = .60f), fontSize = 13.sp)
             }
         },
@@ -754,6 +774,51 @@ private fun HelpDialog(onDismiss: () -> Unit) {
             TextButton(onClick = onDismiss) { Text("Понятно", color = colors.primary) }
         }
     )
+}
+
+@Composable
+private fun VideoGuideDialog(onDismiss: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    var videoView by remember { mutableStateOf<VideoView?>(null) }
+    var aspectRatio by remember { mutableFloatStateOf(9f / 16f) }
+    DisposableEffect(Unit) {
+        onDispose { videoView?.stopPlayback() }
+    }
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxWidth().padding(20.dp),
+            shape = RoundedCornerShape(24.dp),
+            color = colors.surface,
+            tonalElevation = 6.dp,
+        ) {
+            Column(Modifier.padding(16.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Видеогайд VeSBP", modifier = Modifier.weight(1f), color = colors.onSurface, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    TextButton(onClick = onDismiss) { Text("Закрыть", color = colors.primary) }
+                }
+                Spacer(Modifier.height(10.dp))
+                AndroidView(
+                    factory = { viewContext ->
+                        VideoView(viewContext).also { player ->
+                            videoView = player
+                            player.setVideoURI(Uri.parse("android.resource://${viewContext.packageName}/${R.raw.vesbp_guide}"))
+                            player.setMediaController(MediaController(viewContext).apply { setAnchorView(player) })
+                            player.setOnPreparedListener { mediaPlayer ->
+                                if (mediaPlayer.videoWidth > 0 && mediaPlayer.videoHeight > 0) {
+                                    aspectRatio = mediaPlayer.videoWidth.toFloat() / mediaPlayer.videoHeight
+                                }
+                                player.start()
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().aspectRatio(aspectRatio).background(Color.Black, RoundedCornerShape(16.dp))
+                )
+            }
+        }
+    }
 }
 
 @Composable
