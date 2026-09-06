@@ -19,10 +19,13 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    val releaseStoreFile = providers.gradleProperty("vesbpStoreFile").orNull
-    val releaseStorePassword = providers.gradleProperty("vesbpStorePassword").orNull
-    val releaseKeyAlias = providers.gradleProperty("vesbpKeyAlias").orNull
-    val releaseKeyPassword = providers.gradleProperty("vesbpKeyPassword").orNull
+    fun localSigningValue(property: String, environment: String): String? =
+        providers.gradleProperty(property).orNull ?: providers.environmentVariable(environment).orNull
+
+    val releaseStoreFile = localSigningValue("vesbpStoreFile", "VESBP_STORE_FILE")
+    val releaseStorePassword = localSigningValue("vesbpStorePassword", "VESBP_STORE_PASSWORD")
+    val releaseKeyAlias = localSigningValue("vesbpKeyAlias", "VESBP_KEY_ALIAS")
+    val releaseKeyPassword = localSigningValue("vesbpKeyPassword", "VESBP_KEY_PASSWORD")
 
     signingConfigs {
         if (!releaseStoreFile.isNullOrBlank() &&
