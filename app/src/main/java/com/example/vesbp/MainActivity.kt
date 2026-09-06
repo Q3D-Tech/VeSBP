@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.view.PixelCopy
 import android.view.View
 import android.view.ViewGroup
@@ -62,11 +63,17 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
+import androidx.core.content.FileProvider
 import com.example.vesbp.ui.theme.VeSBPTheme
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 private const val NSPK_PREFIX = "https://qr.nspk.ru/"
 private const val UGLEMETBANK_SCHEME = "bank100000000093"
@@ -214,6 +221,46 @@ private fun openExternalUrl(context: Context, url: String) {
     }
 }
 
+private fun canInstallPackages(context: Context): Boolean =
+    Build.VERSION.SDK_INT < Build.VERSION_CODES.O || context.packageManager.canRequestPackageInstalls()
+
+private fun openUnknownSourcesSettings(context: Context) {
+    val intent = Intent(
+        Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+        Uri.parse("package:${context.packageName}")
+    )
+    runCatching { context.startActivity(intent) }.onFailure {
+        Toast.makeText(context, "Не удалось открыть настройки установки", Toast.LENGTH_SHORT).show()
+    }
+}
+
+private fun openPackageInstaller(context: Context, apkFile: File): Boolean = runCatching {
+    val apkUri = FileProvider.getUriForFile(context, "${context.packageName}.updates", apkFile)
+    context.startActivity(
+        Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(apkUri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+    )
+    true
+}.getOrElse {
+    Toast.makeText(context, "Не удалось открыть установщик", Toast.LENGTH_SHORT).show()
+    false
+}
+
+private fun formatUpdateDate(value: String): String? = runCatching {
+    val source = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
+    val result = SimpleDateFormat("d MMMM yyyy", Locale("ru"))
+    result.format(source.parse(value) ?: return null)
+}.getOrNull()
+
+private fun formatFileSize(bytes: Long): String = when {
+    bytes < 1_024 -> "$bytes Б"
+    bytes < 1_024 * 1_024 -> "${bytes / 1_024} КБ"
+    else -> String.format(Locale.US, "%.1f МБ", bytes / (1_024f * 1_024f))
+}
+
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 private fun VeSbpApp(initialUrl: String?, themeMode: ThemeMode, onThemeChange: (ThemeMode) -> Unit) {
@@ -222,13 +269,66 @@ private fun VeSbpApp(initialUrl: String?, themeMode: ThemeMode, onThemeChange: (
     var copied by remember { mutableStateOf(false) }
     var showHelp by rememberSaveable { mutableStateOf(false) }
     var showAbout by rememberSaveable { mutableStateOf(false) }
+    var showUpdateProgress by rememberSaveable { mutableStateOf(false) }
+    var showInstallPermission by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
+    val updateManager = remember(context) { UpdateManager(context) }
+    val updateScope = rememberCoroutineScope()
+    var updateState by remember { mutableStateOf<UpdateState>(UpdateState.Checking) }
     val colors = MaterialTheme.colorScheme
     val rounded = RoundedCornerShape(22.dp)
     LaunchedEffect(copied) {
         if (copied) {
             delay(1_500)
             copied = false
+        }
+    }
+    LaunchedEffect(updateManager) {
+        val savedUpdate = updateManager.downloadedUpdate()
+            ?.takeIf { updateManager.isNewerThanInstalled(it.first.version, BuildConfig.VERSION_NAME) }
+        if (savedUpdate != null) updateState = UpdateState.Downloaded(savedUpdate.first, savedUpdate.second)
+
+        updateManager.fetchLatest()
+            .onSuccess { latest ->
+                val matchingDownload = savedUpdate?.takeIf { it.first.version == latest.version }
+                updateState = when {
+                    matchingDownload != null -> UpdateState.Downloaded(matchingDownload.first, matchingDownload.second)
+                    updateManager.isNewerThanInstalled(latest.version, BuildConfig.VERSION_NAME) -> UpdateState.Available(latest)
+                    else -> UpdateState.UpToDate(latest)
+                }
+            }
+            .onFailure {
+                if (savedUpdate == null) updateState = UpdateState.Failed("Не удалось проверить обновления")
+            }
+    }
+    fun downloadUpdate(update: AppUpdate) {
+        showUpdateProgress = true
+        updateState = UpdateState.Downloading(update, DownloadProgress(0L, 0L, 0L))
+        updateScope.launch {
+            updateManager.download(update) { progress ->
+                updateScope.launch { updateState = UpdateState.Downloading(update, progress) }
+            }.onSuccess { apk ->
+                updateState = UpdateState.Downloaded(update, apk)
+            }.onFailure {
+                updateState = UpdateState.Failed("Не удалось скачать обновление")
+            }
+        }
+    }
+    fun installUpdate(update: AppUpdate, apkFile: File) {
+        if (!canInstallPackages(context)) {
+            showInstallPermission = true
+            return
+        }
+        showUpdateProgress = true
+        updateState = UpdateState.Installing(update, apkFile)
+        updateScope.launch {
+            delay(160)
+            if (openPackageInstaller(context, apkFile)) {
+                delay(500)
+                updateState = UpdateState.Downloaded(update, apkFile)
+            } else {
+                updateState = UpdateState.Downloaded(update, apkFile)
+            }
         }
     }
 
@@ -297,7 +397,7 @@ private fun VeSbpApp(initialUrl: String?, themeMode: ThemeMode, onThemeChange: (
         Spacer(Modifier.height(18.dp))
         SupportProject()
         Spacer(Modifier.height(16.dp))
-        SocialLinks(onInfo = { showAbout = true })
+        SocialLinks(updateState = updateState, onInfo = { showAbout = true })
         Spacer(Modifier.height(28.dp))
     }
 
@@ -305,18 +405,57 @@ private fun VeSbpApp(initialUrl: String?, themeMode: ThemeMode, onThemeChange: (
         HelpDialog(onDismiss = { showHelp = false })
     }
     if (showAbout) {
-        AboutDialog(onDismiss = { showAbout = false })
+        AboutDialog(
+            updateState = updateState,
+            onDismiss = { showAbout = false },
+            onDownload = { downloadUpdate(it) },
+            onInstall = { update, file -> installUpdate(update, file) },
+            onRetry = {
+                updateState = UpdateState.Checking
+                updateScope.launch {
+                    updateManager.fetchLatest()
+                        .onSuccess { latest ->
+                            updateState = if (updateManager.isNewerThanInstalled(latest.version, BuildConfig.VERSION_NAME)) {
+                                UpdateState.Available(latest)
+                            } else UpdateState.UpToDate(latest)
+                        }
+                        .onFailure { updateState = UpdateState.Failed("Не удалось проверить обновления") }
+                }
+            }
+        )
+    }
+    if (showUpdateProgress) {
+        UpdateProgressDialog(updateState = updateState, onDismiss = { showUpdateProgress = false })
+    }
+    if (showInstallPermission) {
+        InstallPermissionDialog(
+            onDismiss = { showInstallPermission = false },
+            onOpenSettings = {
+                showInstallPermission = false
+                openUnknownSourcesSettings(context)
+            }
+        )
     }
 }
 
 @Composable
-private fun SocialLinks(onInfo: () -> Unit) {
+private fun SocialLinks(updateState: UpdateState, onInfo: () -> Unit) {
     val context = LocalContext.current
     val colors = MaterialTheme.colorScheme
     val shape = RoundedCornerShape(50.dp)
+    val updateMarker = when (updateState) {
+        is UpdateState.Available -> "Доступно обновление"
+        is UpdateState.Downloaded -> "Обновление скачано"
+        else -> null
+    }
+    val infoBorder = when (updateState) {
+        is UpdateState.Available -> colors.primary
+        is UpdateState.Downloaded -> Color(0xFF16914B)
+        else -> colors.outline.copy(alpha = .55f)
+    }
     Row(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.Top
     ) {
         IconButton(
             onClick = { openExternalUrl(context, GITHUB_URL) },
@@ -330,17 +469,41 @@ private fun SocialLinks(onInfo: () -> Unit) {
         ) {
             Icon(painterResource(R.drawable.ic_telegram), contentDescription = "Telegram", tint = Color(0xFF229ED9), modifier = Modifier.size(23.dp))
         }
-        IconButton(
-            onClick = onInfo,
-            modifier = Modifier.size(46.dp).background(colors.surfaceVariant, shape).border(1.dp, colors.outline.copy(alpha = .55f), shape)
-        ) {
-            Icon(Icons.Outlined.Info, contentDescription = "О приложении", tint = colors.onSurface.copy(alpha = .78f), modifier = Modifier.size(23.dp))
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            IconButton(
+                onClick = onInfo,
+                modifier = Modifier.size(46.dp).background(colors.surfaceVariant, shape).border(1.5.dp, infoBorder, shape)
+            ) {
+                Icon(Icons.Outlined.Info, contentDescription = "О приложении", tint = colors.onSurface.copy(alpha = .78f), modifier = Modifier.size(23.dp))
+            }
+            if (updateMarker != null) {
+                Spacer(Modifier.height(5.dp))
+                Text(
+                    updateMarker,
+                    modifier = Modifier
+                        .background(infoBorder.copy(alpha = .14f), RoundedCornerShape(50.dp))
+                        .border(1.dp, infoBorder.copy(alpha = .36f), RoundedCornerShape(50.dp))
+                        .clickable { onInfo() }
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                    color = infoBorder,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun AboutDialog(onDismiss: () -> Unit) {
+private fun AboutDialog(
+    updateState: UpdateState,
+    onDismiss: () -> Unit,
+    onDownload: (AppUpdate) -> Unit,
+    onInstall: (AppUpdate, File) -> Unit,
+    onRetry: () -> Unit,
+) {
     val context = LocalContext.current
     val colors = MaterialTheme.colorScheme
     AlertDialog(
@@ -351,8 +514,11 @@ private fun AboutDialog(onDismiss: () -> Unit) {
         textContentColor = colors.onSurface.copy(alpha = .72f),
         title = { Text("О приложении", fontWeight = FontWeight.Bold) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("VeSBP · версия 1.0.0")
+            Column(
+                modifier = Modifier.heightIn(max = 500.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text("VeSBP · версия ${BuildConfig.VERSION_NAME}")
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("By ")
                     Text(
@@ -362,11 +528,192 @@ private fun AboutDialog(onDismiss: () -> Unit) {
                         fontWeight = FontWeight.SemiBold
                     )
                 }
+                HorizontalDivider(color = colors.outline.copy(alpha = .42f))
+                UpdateInfo(
+                    updateState = updateState,
+                    onDownload = onDownload,
+                    onInstall = onInstall,
+                    onRetry = onRetry,
+                )
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Понятно", color = colors.primary) }
+            TextButton(onClick = onDismiss) { Text("Закрыть", color = colors.primary) }
         }
+    )
+}
+
+@Composable
+private fun UpdateInfo(
+    updateState: UpdateState,
+    onDownload: (AppUpdate) -> Unit,
+    onInstall: (AppUpdate, File) -> Unit,
+    onRetry: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(18.dp)
+    Column(
+        modifier = Modifier.fillMaxWidth().background(colors.surfaceVariant, shape).border(1.dp, colors.outline.copy(alpha = .52f), shape).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(9.dp)
+    ) {
+        Text("Обновления", color = colors.onSurface, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        when (updateState) {
+            UpdateState.Checking -> {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Text("Проверяем наличие обновлений", color = colors.onSurface.copy(alpha = .68f), fontSize = 13.sp)
+                }
+            }
+            is UpdateState.UpToDate -> {
+                Text("Установлена последняя версия", color = colors.onSurface.copy(alpha = .72f), fontSize = 13.sp)
+                updateState.latest?.let { update ->
+                    Text("Последняя версия: ${update.version}", color = colors.onSurface.copy(alpha = .56f), fontSize = 12.sp)
+                }
+            }
+            is UpdateState.Available -> {
+                Text("Обнаружено новое обновление", color = colors.primary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                UpdateReleaseDetails(updateState.update)
+                Button(
+                    onClick = { onDownload(updateState.update) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary, contentColor = colors.onPrimary)
+                ) { Text("Обновить") }
+            }
+            is UpdateState.Downloading -> {
+                Text("Обновление скачивается", color = colors.onSurface.copy(alpha = .72f), fontSize = 13.sp)
+                UpdateReleaseDetails(updateState.update, showNotes = false)
+            }
+            is UpdateState.Downloaded -> {
+                Text("Обновление скачано", color = Color(0xFF16914B), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                UpdateReleaseDetails(updateState.update)
+                Button(
+                    onClick = { onInstall(updateState.update, updateState.file) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16914B), contentColor = Color.White)
+                ) { Text("Установить") }
+            }
+            is UpdateState.Installing -> {
+                Text("Открываем установщик Android", color = colors.onSurface.copy(alpha = .72f), fontSize = 13.sp)
+            }
+            is UpdateState.Failed -> {
+                Text(updateState.message, color = colors.error, fontSize = 13.sp)
+                OutlinedButton(onClick = onRetry, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
+                    Text("Проверить ещё раз")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun UpdateReleaseDetails(update: AppUpdate, showNotes: Boolean = true) {
+    val colors = MaterialTheme.colorScheme
+    Text("Версия ${update.version}", color = colors.onSurface, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+    formatUpdateDate(update.publishedAt)?.let { date ->
+        Text("Опубликовано $date", color = colors.onSurface.copy(alpha = .58f), fontSize = 12.sp)
+    }
+    if (showNotes) UpdateNotes(update.notes)
+}
+
+@Composable
+private fun UpdateNotes(notes: String) {
+    val colors = MaterialTheme.colorScheme
+    var expanded by rememberSaveable(notes) { mutableStateOf(false) }
+    val text = notes.trim().ifBlank { "Описание обновления не добавлено." }
+    Text("Что нового", color = colors.onSurface.copy(alpha = .68f), fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+    Text(
+        text,
+        color = colors.onSurface.copy(alpha = .70f),
+        fontSize = 12.sp,
+        maxLines = if (expanded) Int.MAX_VALUE else 3,
+        overflow = TextOverflow.Ellipsis,
+    )
+    if (text.length > 105) {
+        Text(
+            if (expanded) "Свернуть" else "Показать полностью",
+            modifier = Modifier.clickable { expanded = !expanded },
+            color = colors.primary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+@Composable
+private fun UpdateProgressDialog(updateState: UpdateState, onDismiss: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val downloading = updateState as? UpdateState.Downloading
+    val isInstalling = updateState is UpdateState.Installing
+    val isDownloaded = updateState is UpdateState.Downloaded
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(24.dp),
+        containerColor = colors.surface,
+        titleContentColor = colors.onSurface,
+        textContentColor = colors.onSurface.copy(alpha = .72f),
+        title = { Text(if (isInstalling) "Установка обновления" else "Обновление VeSBP", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                UpdateSteps(downloading != null, isInstalling, isDownloaded)
+                when {
+                    downloading != null -> DownloadingStatus(downloading.progress)
+                    isInstalling -> Text("Открываем установщик Android…")
+                    isDownloaded -> Text("Обновление скачано. Нажмите «Установить» в информации о приложении.")
+                    updateState is UpdateState.Failed -> Text(updateState.message, color = colors.error)
+                    else -> Text("Подготавливаем обновление…")
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Готово", color = colors.primary) }
+        }
+    )
+}
+
+@Composable
+private fun UpdateSteps(downloading: Boolean, installing: Boolean, downloaded: Boolean) {
+    val colors = MaterialTheme.colorScheme
+    val activeColor = if (downloaded) Color(0xFF16914B) else colors.primary
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text("Подготовка", color = if (downloading || installing || downloaded) activeColor else colors.onSurface.copy(alpha = .48f), fontSize = 11.sp)
+        Text("Скачивание", color = if (downloading || installing || downloaded) activeColor else colors.onSurface.copy(alpha = .48f), fontSize = 11.sp)
+        Text("Установка", color = if (installing) activeColor else colors.onSurface.copy(alpha = .48f), fontSize = 11.sp)
+    }
+}
+
+@Composable
+private fun DownloadingStatus(progress: DownloadProgress) {
+    val colors = MaterialTheme.colorScheme
+    val fraction = if (progress.totalBytes > 0) (progress.downloadedBytes.toFloat() / progress.totalBytes).coerceIn(0f, 1f) else null
+    if (fraction == null) {
+        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+    } else {
+        LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
+    }
+    val amount = if (progress.totalBytes > 0) "${formatFileSize(progress.downloadedBytes)} из ${formatFileSize(progress.totalBytes)}" else formatFileSize(progress.downloadedBytes)
+    val speed = if (progress.bytesPerSecond > 0) " · ${formatFileSize(progress.bytesPerSecond)}/с" else ""
+    val remaining = if (progress.totalBytes > 0 && progress.bytesPerSecond > 0) {
+        val seconds = ((progress.totalBytes - progress.downloadedBytes) / progress.bytesPerSecond).coerceAtLeast(0)
+        " · осталось ${seconds} с"
+    } else ""
+    Text("$amount$speed$remaining", color = colors.onSurface.copy(alpha = .68f), fontSize = 12.sp)
+}
+
+@Composable
+private fun InstallPermissionDialog(onDismiss: () -> Unit, onOpenSettings: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(24.dp),
+        containerColor = colors.surface,
+        titleContentColor = colors.onSurface,
+        textContentColor = colors.onSurface.copy(alpha = .72f),
+        title = { Text("Разрешите установку", fontWeight = FontWeight.Bold) },
+        text = { Text("Чтобы установить скачанное обновление, разрешите VeSBP устанавливать приложения из этого источника.") },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена", color = colors.onSurface.copy(alpha = .72f)) } },
+        confirmButton = { TextButton(onClick = onOpenSettings) { Text("Открыть настройки", color = colors.primary) } }
     )
 }
 
