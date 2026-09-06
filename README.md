@@ -41,3 +41,20 @@ VeSBP не проводит платежи, не списывает денежн
 ## Лицензия
 
 Проект распространяется по [лицензии MIT](LICENSE).
+
+## Поддержать проект ❤️
+
+Будем рады вашей поддержке. Пожалуйста, отправляйте актив только через указанную сеть.
+
+| Актив | Сеть | Адрес |
+| --- | --- | --- |
+| USDT | TRC20 | `THDdetaN5hyL8ZxctC75aTBSDT4bDUKtYC` |
+| USDT | ERC20 / BEP20 / Polygon | `0x4ead462500337829bB6cDEB437187CC4eBE755dC` |
+| USDT | Solana | `EdURB1MUpTQjUi4UWLBpw7tQARWkcHCm3tSzBFnYHHB6` |
+| USDC | Arbitrum One / ERC20 / Base | `0x4ead462500337829bB6cDEB437187CC4eBE755dC` |
+| ETH | ERC20 | `0x4ead462500337829bB6cDEB437187CC4eBE755dC` |
+| POL | Polygon | `0x4ead462500337829bB6cDEB437187CC4eBE755dC` |
+| BTC | Bitcoin | `bc1q6k5xqdvwt9mmy38d9fnmwsk6efnrn1r8jqe0mj` |
+| TRX | Tron | `THDdetaN5hyL8ZxctC75aTBSDT4bDUKtYC` |
+| SOL | Solana | `EdURB1MUpTQjUi4UWLBpw7tQARWkcHCm3tSzBFnYHHB6` |
+| GRAM | TON | `UQBIET64WYFty_VVPfH0NAruWnan91H6fbt81VSY0GN5i1Q8` |
