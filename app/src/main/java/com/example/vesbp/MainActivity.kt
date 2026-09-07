@@ -3,8 +3,10 @@ package com.example.vesbp
 import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
@@ -85,6 +87,7 @@ private const val NSPK_PREFIX = "https://qr.nspk.ru/"
 private const val UGLEMETBANK_SCHEME = "bank100000000093"
 private const val SETTINGS_NAME = "vesbp_settings"
 private const val THEME_MODE_KEY = "theme_mode"
+private const val LINK_RECEIVER_ENABLED_KEY = "link_receiver_enabled"
 private const val THEME_FADE_DURATION_MS = 240L
 private const val THEME_SNAPSHOT_SCALE = 0.60f
 private const val GITHUB_URL = "https://github.com/Q3D-Tech/VeSBP"
@@ -119,6 +122,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
         setContent { VeSbpRoot(incomingUrl(intent)) }
     }
 }
@@ -131,6 +135,9 @@ private fun VeSbpRoot(initialUrl: String?) {
     val view = LocalView.current
     val settings = remember(context) {
         context.applicationContext.getSharedPreferences(SETTINGS_NAME, Context.MODE_PRIVATE)
+    }
+    var linkReceiverEnabled by rememberSaveable {
+        mutableStateOf(settings.getBoolean(LINK_RECEIVER_ENABLED_KEY, true))
     }
     var themeMode by rememberSaveable {
         mutableStateOf(
@@ -150,19 +157,40 @@ private fun VeSbpRoot(initialUrl: String?) {
         controller.isAppearanceLightStatusBars = !dark
         controller.isAppearanceLightNavigationBars = !dark
     }
+    LaunchedEffect(linkReceiverEnabled) {
+        setLinkReceiverEnabled(context, linkReceiverEnabled)
+    }
     VeSBPTheme(darkTheme = dark) {
-        VeSbpApp(initialUrl, themeMode) { selectedMode ->
-            if (selectedMode != themeMode) {
-                (context as? Activity)?.crossfadeTheme(view) {
-                    themeMode = selectedMode
-                    settings.edit().putString(THEME_MODE_KEY, selectedMode.name).apply()
-                } ?: run {
-                    themeMode = selectedMode
-                    settings.edit().putString(THEME_MODE_KEY, selectedMode.name).apply()
+        VeSbpApp(
+            initialUrl = initialUrl,
+            themeMode = themeMode,
+            linkReceiverEnabled = linkReceiverEnabled,
+            onLinkReceiverChange = { enabled ->
+                linkReceiverEnabled = enabled
+                settings.edit().putBoolean(LINK_RECEIVER_ENABLED_KEY, enabled).apply()
+            },
+            onThemeChange = { selectedMode ->
+                if (selectedMode != themeMode) {
+                    (context as? Activity)?.crossfadeTheme(view) {
+                        themeMode = selectedMode
+                        settings.edit().putString(THEME_MODE_KEY, selectedMode.name).apply()
+                    } ?: run {
+                        themeMode = selectedMode
+                        settings.edit().putString(THEME_MODE_KEY, selectedMode.name).apply()
+                    }
                 }
             }
-        }
+        )
     }
+}
+
+private fun setLinkReceiverEnabled(context: Context, enabled: Boolean) {
+    val component = ComponentName(context, LinkReceiverActivity::class.java)
+    context.packageManager.setComponentEnabledSetting(
+        component,
+        if (enabled) PackageManager.COMPONENT_ENABLED_STATE_ENABLED else PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+        PackageManager.DONT_KILL_APP
+    )
 }
 
 private fun Activity.crossfadeTheme(composeView: View, applyTheme: () -> Unit) {
@@ -272,6 +300,8 @@ private fun formatFileSize(bytes: Long): String = when {
 private fun VeSbpApp(
     initialUrl: String?,
     themeMode: ThemeMode,
+    linkReceiverEnabled: Boolean,
+    onLinkReceiverChange: (Boolean) -> Unit,
     onThemeChange: (ThemeMode) -> Unit,
 ) {
     var link by rememberSaveable { mutableStateOf(nspkUrl(initialUrl)) }
@@ -404,6 +434,11 @@ private fun VeSbpApp(
                 Toast.makeText(context, "Ссылка скопирована", Toast.LENGTH_SHORT).show()
             }
         }
+        Spacer(Modifier.height(16.dp))
+        LinkReceiverControl(
+            enabled = linkReceiverEnabled,
+            onEnabledChange = onLinkReceiverChange
+        )
         Spacer(Modifier.height(16.dp))
         ThemeButtons(themeMode, onThemeChange)
         Spacer(Modifier.height(18.dp))
@@ -1083,6 +1118,44 @@ private fun PaymentLink(link: String?, copied: Boolean, shape: RoundedCornerShap
     ) {
         Text(link ?: "Платёжная ссылка", Modifier.weight(1f), color = if (active) colors.onSurface else colors.onSurface.copy(alpha = .45f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 14.sp)
         Icon(if (copied) Icons.Outlined.Check else Icons.Outlined.ContentCopy, "Копировать ссылку", tint = if (copied) Color(0xFF16803C) else if (active) colors.primary else colors.onSurface.copy(alpha = .25f), modifier = Modifier.size(44.dp).padding(10.dp).then(if (active) Modifier.clickable { onCopy() } else Modifier))
+    }
+}
+
+@Composable
+private fun LinkReceiverControl(enabled: Boolean, onEnabledChange: (Boolean) -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(18.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.surface, shape)
+            .border(1.dp, colors.outline.copy(alpha = .62f), shape)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Приём ссылок в VeSBP", color = colors.onSurface, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            Spacer(Modifier.height(2.dp))
+            Text(
+                if (enabled) "VeSBP доступен при выборе банка и в меню «Поделиться»"
+                else "VeSBP не будет предлагаться для банковских ссылок",
+                color = colors.onSurface.copy(alpha = .62f),
+                fontSize = 12.sp,
+                lineHeight = 16.sp
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Switch(
+            checked = enabled,
+            onCheckedChange = onEnabledChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = colors.onPrimary,
+                checkedTrackColor = colors.primary,
+                uncheckedThumbColor = colors.onSurface.copy(alpha = .7f),
+                uncheckedTrackColor = colors.surfaceVariant,
+                uncheckedBorderColor = colors.outline.copy(alpha = .65f)
+            )
+        )
     }
 }
 
