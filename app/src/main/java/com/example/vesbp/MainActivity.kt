@@ -113,24 +113,39 @@ private val supportAddresses = listOf(
     SupportAddress("GRAM", "TON", "UQBIET64WYFty_VVPfH0NAruWnan91H6fbt81VSY0GN5i1Q8")
 )
 
+private data class IncomingLinkRequest(
+    val url: String? = null,
+    val sequence: Long = 0L,
+)
+
 class MainActivity : ComponentActivity() {
+    private var incomingLinkRequest by mutableStateOf(IncomingLinkRequest())
+    private var incomingLinkSequence = 0L
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { VeSbpRoot(incomingUrl(intent)) }
+        receiveLink(intent)
+        setContent { VeSbpRoot(incomingLinkRequest) }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        setContent { VeSbpRoot(incomingUrl(intent)) }
+        receiveLink(intent)
+    }
+
+    private fun receiveLink(intent: Intent?) {
+        val url = incomingUrl(intent) ?: return
+        incomingLinkSequence += 1L
+        incomingLinkRequest = IncomingLinkRequest(url, incomingLinkSequence)
     }
 }
 
 private enum class ThemeMode { LIGHT, SYSTEM, DARK }
 
 @Composable
-private fun VeSbpRoot(initialUrl: String?) {
+private fun VeSbpRoot(incomingLinkRequest: IncomingLinkRequest) {
     val context = LocalContext.current
     val view = LocalView.current
     val settings = remember(context) {
@@ -162,7 +177,7 @@ private fun VeSbpRoot(initialUrl: String?) {
     }
     VeSBPTheme(darkTheme = dark) {
         VeSbpApp(
-            initialUrl = initialUrl,
+            incomingLinkRequest = incomingLinkRequest,
             themeMode = themeMode,
             linkReceiverEnabled = linkReceiverEnabled,
             onLinkReceiverChange = { enabled ->
@@ -298,13 +313,13 @@ private fun formatFileSize(bytes: Long): String = when {
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 private fun VeSbpApp(
-    initialUrl: String?,
+    incomingLinkRequest: IncomingLinkRequest,
     themeMode: ThemeMode,
     linkReceiverEnabled: Boolean,
     onLinkReceiverChange: (Boolean) -> Unit,
     onThemeChange: (ThemeMode) -> Unit,
 ) {
-    var link by rememberSaveable { mutableStateOf(nspkUrl(initialUrl)) }
+    var link by rememberSaveable { mutableStateOf(nspkUrl(incomingLinkRequest.url)) }
     var bankMenu by remember { mutableStateOf(false) }
     var copied by remember { mutableStateOf(false) }
     var showHelp by rememberSaveable { mutableStateOf(false) }
@@ -318,6 +333,20 @@ private fun VeSbpApp(
     var updateState by remember { mutableStateOf<UpdateState>(UpdateState.Checking) }
     val colors = MaterialTheme.colorScheme
     val rounded = RoundedCornerShape(22.dp)
+    LaunchedEffect(incomingLinkRequest.sequence) {
+        if (linkReceiverEnabled) {
+            nspkUrl(incomingLinkRequest.url)?.let { receivedLink ->
+                link = receivedLink
+                copied = false
+            }
+        }
+    }
+    LaunchedEffect(linkReceiverEnabled) {
+        if (!linkReceiverEnabled) {
+            link = null
+            copied = false
+        }
+    }
     LaunchedEffect(copied) {
         if (copied) {
             delay(1_500)
@@ -424,9 +453,9 @@ private fun VeSbpApp(
             }
         }
         Spacer(Modifier.height(20.dp))
-        QrArea(link, rounded)
+        QrArea(link, rounded, linkReceiverEnabled)
         Spacer(Modifier.height(20.dp))
-        PaymentLink(link, copied, rounded) {
+        PaymentLink(link, copied, rounded, linkReceiverEnabled) {
             link?.let {
                 (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
                     .setPrimaryClip(ClipData.newPlainText("Платёжная ссылка", it))
@@ -1059,14 +1088,24 @@ private fun RowScope.ThemeOption(label: String, mode: ThemeMode, selected: Theme
 }
 
 @Composable
-private fun QrArea(link: String?, shape: RoundedCornerShape) {
+private fun QrArea(link: String?, shape: RoundedCornerShape, linkReceiverEnabled: Boolean) {
     val colors = MaterialTheme.colorScheme
     Box(
-        modifier = Modifier.size(252.dp).background(if (link == null) colors.surface else Color.White, shape).border(1.dp, colors.outline.copy(alpha = .7f), shape),
+        modifier = Modifier.size(252.dp).background(if (link == null || !linkReceiverEnabled) colors.surface else Color.White, shape).border(1.dp, colors.outline.copy(alpha = .7f), shape),
         contentAlignment = Alignment.Center
     ) {
-        if (link == null) EmptyQrIcon(Modifier.size(170.dp), colors.onSurface.copy(alpha = .30f))
-        else QrCode(link, Modifier.size(244.dp), Color.Black)
+        when {
+            !linkReceiverEnabled -> Text(
+                text = "Вы отключили приём ссылок",
+                modifier = Modifier.padding(horizontal = 28.dp),
+                color = colors.onSurface.copy(alpha = .72f),
+                fontSize = 15.sp,
+                lineHeight = 21.sp,
+                textAlign = TextAlign.Center
+            )
+            link == null -> EmptyQrIcon(Modifier.size(170.dp), colors.onSurface.copy(alpha = .30f))
+            else -> QrCode(link, Modifier.size(244.dp), Color.Black)
+        }
     }
 }
 
@@ -1109,15 +1148,38 @@ private fun QrCode(value: String, modifier: Modifier, color: Color) {
 }
 
 @Composable
-private fun PaymentLink(link: String?, copied: Boolean, shape: RoundedCornerShape, onCopy: () -> Unit) {
+private fun PaymentLink(
+    link: String?,
+    copied: Boolean,
+    shape: RoundedCornerShape,
+    linkReceiverEnabled: Boolean,
+    onCopy: () -> Unit,
+) {
     val colors = MaterialTheme.colorScheme
     val active = link != null
+    val contentPadding = if (linkReceiverEnabled) {
+        Modifier.padding(start = 18.dp, end = 8.dp)
+    } else {
+        Modifier.padding(horizontal = 18.dp)
+    }
     Row(
-        Modifier.fillMaxWidth().height(58.dp).background(colors.surface, shape).border(1.dp, colors.outline.copy(alpha = .7f), shape).padding(start = 18.dp, end = 8.dp),
+        Modifier.fillMaxWidth().height(58.dp).background(colors.surface, shape).border(1.dp, colors.outline.copy(alpha = .7f), shape).then(contentPadding),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(link ?: "Платёжная ссылка", Modifier.weight(1f), color = if (active) colors.onSurface else colors.onSurface.copy(alpha = .45f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 14.sp)
-        Icon(if (copied) Icons.Outlined.Check else Icons.Outlined.ContentCopy, "Копировать ссылку", tint = if (copied) Color(0xFF16803C) else if (active) colors.primary else colors.onSurface.copy(alpha = .25f), modifier = Modifier.size(44.dp).padding(10.dp).then(if (active) Modifier.clickable { onCopy() } else Modifier))
+        if (!linkReceiverEnabled) {
+            Text(
+                text = "Включите его снова кнопкой ниже",
+                modifier = Modifier.fillMaxWidth(),
+                color = colors.onSurface.copy(alpha = .62f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                fontSize = 14.sp,
+                textAlign = TextAlign.Center
+            )
+        } else {
+            Text(link ?: "Платёжная ссылка", Modifier.weight(1f), color = if (active) colors.onSurface else colors.onSurface.copy(alpha = .45f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 14.sp)
+            Icon(if (copied) Icons.Outlined.Check else Icons.Outlined.ContentCopy, "Копировать ссылку", tint = if (copied) Color(0xFF16803C) else if (active) colors.primary else colors.onSurface.copy(alpha = .25f), modifier = Modifier.size(44.dp).padding(10.dp).then(if (active) Modifier.clickable { onCopy() } else Modifier))
+        }
     }
 }
 
@@ -1160,4 +1222,4 @@ private fun LinkReceiverControl(enabled: Boolean, onEnabledChange: (Boolean) -> 
 }
 
 @Preview(showBackground = true)
-@Composable private fun PreviewVeSbp() { VeSbpRoot(null) }
+@Composable private fun PreviewVeSbp() { VeSbpRoot(IncomingLinkRequest()) }

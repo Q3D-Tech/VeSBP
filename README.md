@@ -10,7 +10,7 @@
   <a href="https://github.com/Q3D-Tech/VeSBP"><img src="https://img.shields.io/badge/GitHub-Q3D--Tech%2FVeSBP-181717?style=flat-square&logo=github&logoColor=white" alt="GitHub"></a>
   <a href="https://t.me/verisbp"><img src="https://img.shields.io/badge/Telegram-@verisbp-229ED9?style=flat-square&logo=telegram&logoColor=white" alt="Telegram"></a>
   <img src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Android 8.0+">
-  <img src="https://img.shields.io/badge/Version-1.0.3-002FA7?style=flat-square" alt="Version 1.0.3">
+  <img src="https://img.shields.io/badge/Version-1.0.4-002FA7?style=flat-square" alt="Version 1.0.4">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-3DA639?style=flat-square" alt="MIT License"></a>
 </p>
 
