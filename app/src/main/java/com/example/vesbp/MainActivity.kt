@@ -6,6 +6,7 @@ import android.content.ClipboardManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
@@ -58,6 +59,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -333,6 +335,7 @@ private fun VeSbpApp(
     var updateState by remember { mutableStateOf<UpdateState>(UpdateState.Checking) }
     val colors = MaterialTheme.colorScheme
     val rounded = RoundedCornerShape(22.dp)
+    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     LaunchedEffect(incomingLinkRequest.sequence) {
         if (linkReceiverEnabled) {
             nspkUrl(incomingLinkRequest.url)?.let { receivedLink ->
@@ -403,78 +406,114 @@ private fun VeSbpApp(
         }
     }
 
-    Column(
-        modifier = Modifier.fillMaxSize().background(colors.background).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Spacer(Modifier.height(44.dp))
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Image(painterResource(R.drawable.veri_logo_mark), contentDescription = "Veri", modifier = Modifier.size(34.dp))
-            Text("eSBP", modifier = Modifier.offset(x = (-2).dp), color = colors.onBackground, fontSize = 30.sp, fontWeight = FontWeight.Bold, letterSpacing = (-1).sp)
-            Spacer(Modifier.weight(1f))
-            IconButton(
-                onClick = { link = null; copied = false },
-                enabled = link != null,
-                modifier = Modifier.size(40.dp)
-            ) {
-                Icon(
-                    Icons.Outlined.CleaningServices,
-                    contentDescription = "Очистить QR-код и ссылку",
-                    tint = if (link != null) colors.primary else colors.onBackground.copy(alpha = .24f),
-                    modifier = Modifier.size(23.dp)
-                )
-            }
-            IconButton(onClick = { showHelp = true }, modifier = Modifier.size(40.dp)) {
-                Icon(
-                    Icons.Outlined.HelpOutline,
-                    contentDescription = "Как пользоваться VeSBP",
-                    tint = colors.onBackground.copy(alpha = .72f),
-                    modifier = Modifier.size(25.dp)
-                )
-            }
+    val clearLink = {
+        link = null
+        copied = false
+    }
+    val copyLink = {
+        link?.let {
+            (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
+                .setPrimaryClip(ClipData.newPlainText("Платёжная ссылка", it))
+            copied = true
+            Toast.makeText(context, "Ссылка скопирована", Toast.LENGTH_SHORT).show()
         }
-        Text("QR-код для оплаты через СБП", modifier = Modifier.fillMaxWidth(), color = colors.onBackground.copy(alpha = .62f), fontSize = 15.sp)
-        Spacer(Modifier.height(26.dp))
-        Text("Банк", color = colors.onBackground, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-        Spacer(Modifier.height(8.dp))
-        ExposedDropdownMenuBox(expanded = bankMenu, onExpandedChange = { bankMenu = it }) {
-            OutlinedTextField(
-                value = "Углеметбанк", onValueChange = {}, readOnly = true,
-                modifier = Modifier.width(218.dp).menuAnchor(), shape = RoundedCornerShape(50.dp),
-                textStyle = TextStyle(textAlign = TextAlign.Center),
-                leadingIcon = { Spacer(Modifier.size(48.dp)) },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = bankMenu) },
-                colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(
-                    focusedContainerColor = colors.surface, unfocusedContainerColor = colors.surface
-                )
+        Unit
+    }
+
+    if (isLandscape) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(colors.background)
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .padding(horizontal = 20.dp, vertical = 8.dp)
+        ) {
+            AppHeader(
+                hasLink = link != null,
+                onClear = clearLink,
+                onHelp = { showHelp = true }
             )
-            ExposedDropdownMenu(expanded = bankMenu, onDismissRequest = { bankMenu = false }, shape = rounded) {
-                DropdownMenuItem(text = { Text("Углеметбанк") }, onClick = { bankMenu = false })
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(20.dp)
+            ) {
+                Column(
+                    modifier = Modifier.weight(.92f).fillMaxHeight(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    BankSelector(
+                        expanded = bankMenu,
+                        onExpandedChange = { bankMenu = it },
+                        shape = rounded,
+                        modifier = Modifier.widthIn(max = 218.dp).fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+                        val qrSize = if (maxWidth < maxHeight) maxWidth else maxHeight
+                        QrArea(
+                            link = link,
+                            shape = rounded,
+                            linkReceiverEnabled = linkReceiverEnabled,
+                            modifier = Modifier.size(qrSize).align(Alignment.Center)
+                        )
+                    }
+                }
+                Column(
+                    modifier = Modifier.weight(1.08f).fillMaxHeight().verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    PaymentLink(link, copied, rounded, linkReceiverEnabled, copyLink)
+                    Spacer(Modifier.height(10.dp))
+                    LinkReceiverControl(linkReceiverEnabled, onLinkReceiverChange)
+                    Spacer(Modifier.height(10.dp))
+                    ThemeButtons(themeMode, onThemeChange)
+                    Spacer(Modifier.height(12.dp))
+                    SupportProject()
+                    Spacer(Modifier.height(10.dp))
+                    SocialLinks(updateState = updateState, onInfo = { showAbout = true })
+                    Spacer(Modifier.height(8.dp))
+                }
             }
         }
-        Spacer(Modifier.height(20.dp))
-        QrArea(link, rounded, linkReceiverEnabled)
-        Spacer(Modifier.height(20.dp))
-        PaymentLink(link, copied, rounded, linkReceiverEnabled) {
-            link?.let {
-                (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
-                    .setPrimaryClip(ClipData.newPlainText("Платёжная ссылка", it))
-                copied = true
-                Toast.makeText(context, "Ссылка скопирована", Toast.LENGTH_SHORT).show()
-            }
+    } else {
+        Column(
+            modifier = Modifier.fillMaxSize().background(colors.background).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Spacer(Modifier.height(44.dp))
+            AppHeader(
+                hasLink = link != null,
+                onClear = clearLink,
+                onHelp = { showHelp = true }
+            )
+            Text("QR-код для оплаты через СБП", modifier = Modifier.fillMaxWidth(), color = colors.onBackground.copy(alpha = .62f), fontSize = 15.sp)
+            Spacer(Modifier.height(26.dp))
+            Text("Банк", color = colors.onBackground, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            Spacer(Modifier.height(8.dp))
+            BankSelector(
+                expanded = bankMenu,
+                onExpandedChange = { bankMenu = it },
+                shape = rounded,
+                modifier = Modifier.width(218.dp)
+            )
+            Spacer(Modifier.height(20.dp))
+            QrArea(link, rounded, linkReceiverEnabled, Modifier.size(252.dp))
+            Spacer(Modifier.height(20.dp))
+            PaymentLink(link, copied, rounded, linkReceiverEnabled, copyLink)
+            Spacer(Modifier.height(16.dp))
+            LinkReceiverControl(
+                enabled = linkReceiverEnabled,
+                onEnabledChange = onLinkReceiverChange
+            )
+            Spacer(Modifier.height(16.dp))
+            ThemeButtons(themeMode, onThemeChange)
+            Spacer(Modifier.height(18.dp))
+            SupportProject()
+            Spacer(Modifier.height(16.dp))
+            SocialLinks(updateState = updateState, onInfo = { showAbout = true })
+            Spacer(Modifier.height(28.dp))
         }
-        Spacer(Modifier.height(16.dp))
-        LinkReceiverControl(
-            enabled = linkReceiverEnabled,
-            onEnabledChange = onLinkReceiverChange
-        )
-        Spacer(Modifier.height(16.dp))
-        ThemeButtons(themeMode, onThemeChange)
-        Spacer(Modifier.height(18.dp))
-        SupportProject()
-        Spacer(Modifier.height(16.dp))
-        SocialLinks(updateState = updateState, onInfo = { showAbout = true })
-        Spacer(Modifier.height(28.dp))
     }
 
     if (showHelp) {
@@ -520,6 +559,78 @@ private fun VeSbpApp(
                 openUnknownSourcesSettings(context)
             }
         )
+    }
+}
+
+@Composable
+private fun AppHeader(
+    hasLink: Boolean,
+    onClear: () -> Unit,
+    onHelp: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Image(painterResource(R.drawable.veri_logo_mark), contentDescription = "Veri", modifier = Modifier.size(34.dp))
+        Text("eSBP", modifier = Modifier.offset(x = (-2).dp), color = colors.onBackground, fontSize = 30.sp, fontWeight = FontWeight.Bold, letterSpacing = (-1).sp)
+        Spacer(Modifier.weight(1f))
+        IconButton(
+            onClick = onClear,
+            enabled = hasLink,
+            modifier = Modifier.size(40.dp)
+        ) {
+            Icon(
+                Icons.Outlined.CleaningServices,
+                contentDescription = "Очистить QR-код и ссылку",
+                tint = if (hasLink) colors.primary else colors.onBackground.copy(alpha = .24f),
+                modifier = Modifier.size(23.dp)
+            )
+        }
+        IconButton(onClick = onHelp, modifier = Modifier.size(40.dp)) {
+            Icon(
+                Icons.Outlined.HelpOutline,
+                contentDescription = "Как пользоваться VeSBP",
+                tint = colors.onBackground.copy(alpha = .72f),
+                modifier = Modifier.size(25.dp)
+            )
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun BankSelector(
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    shape: RoundedCornerShape,
+    modifier: Modifier = Modifier,
+) {
+    val colors = MaterialTheme.colorScheme
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = onExpandedChange,
+        modifier = modifier
+    ) {
+        OutlinedTextField(
+            value = "Углеметбанк",
+            onValueChange = {},
+            readOnly = true,
+            modifier = Modifier.fillMaxWidth().menuAnchor(),
+            shape = RoundedCornerShape(50.dp),
+            textStyle = TextStyle(textAlign = TextAlign.Center),
+            leadingIcon = { Spacer(Modifier.size(48.dp)) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(
+                focusedContainerColor = colors.surface,
+                unfocusedContainerColor = colors.surface
+            )
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { onExpandedChange(false) },
+            shape = shape
+        ) {
+            DropdownMenuItem(text = { Text("Углеметбанк") }, onClick = { onExpandedChange(false) })
+        }
     }
 }
 
@@ -1088,10 +1199,15 @@ private fun RowScope.ThemeOption(label: String, mode: ThemeMode, selected: Theme
 }
 
 @Composable
-private fun QrArea(link: String?, shape: RoundedCornerShape, linkReceiverEnabled: Boolean) {
+private fun QrArea(
+    link: String?,
+    shape: RoundedCornerShape,
+    linkReceiverEnabled: Boolean,
+    modifier: Modifier,
+) {
     val colors = MaterialTheme.colorScheme
     Box(
-        modifier = Modifier.size(252.dp).background(if (link == null || !linkReceiverEnabled) colors.surface else Color.White, shape).border(1.dp, colors.outline.copy(alpha = .7f), shape),
+        modifier = modifier.background(if (link == null || !linkReceiverEnabled) colors.surface else Color.White, shape).border(1.dp, colors.outline.copy(alpha = .7f), shape),
         contentAlignment = Alignment.Center
     ) {
         when {
@@ -1103,8 +1219,8 @@ private fun QrArea(link: String?, shape: RoundedCornerShape, linkReceiverEnabled
                 lineHeight = 21.sp,
                 textAlign = TextAlign.Center
             )
-            link == null -> EmptyQrIcon(Modifier.size(170.dp), colors.onSurface.copy(alpha = .30f))
-            else -> QrCode(link, Modifier.size(244.dp), Color.Black)
+            link == null -> EmptyQrIcon(Modifier.fillMaxSize(.68f), colors.onSurface.copy(alpha = .30f))
+            else -> QrCode(link, Modifier.fillMaxSize().padding(4.dp), Color.Black)
         }
     }
 }
@@ -1186,37 +1302,62 @@ private fun PaymentLink(
 @Composable
 private fun LinkReceiverControl(enabled: Boolean, onEnabledChange: (Boolean) -> Unit) {
     val colors = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(18.dp)
-    Row(
+    val shell = RoundedCornerShape(18.dp)
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
-            .background(colors.surface, shape)
-            .border(1.dp, colors.outline.copy(alpha = .62f), shape)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .height(44.dp)
+            .background(colors.surfaceVariant, shell)
+            .padding(4.dp)
     ) {
-        Column(Modifier.weight(1f)) {
-            Text("Приём ссылок в VeSBP", color = colors.onSurface, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-            Spacer(Modifier.height(2.dp))
-            Text(
-                if (enabled) "VeSBP доступен при выборе банка и в меню «Поделиться»"
-                else "VeSBP не будет предлагаться для банковских ссылок",
-                color = colors.onSurface.copy(alpha = .62f),
-                fontSize = 12.sp,
-                lineHeight = 16.sp
+        val segmentWidth = maxWidth / 2
+        val indicatorOffset by animateDpAsState(
+            targetValue = if (enabled) 0.dp else segmentWidth,
+            animationSpec = tween(durationMillis = 220),
+            label = "linkReceiverSelection"
+        )
+        Box(
+            modifier = Modifier
+                .offset(x = indicatorOffset)
+                .width(segmentWidth)
+                .fillMaxHeight()
+                .background(colors.surface, RoundedCornerShape(14.dp))
+        )
+        Row(Modifier.fillMaxSize()) {
+            LinkReceiverOption(
+                label = "|",
+                selected = enabled,
+                onClick = { onEnabledChange(true) }
+            )
+            LinkReceiverOption(
+                label = "O",
+                selected = !enabled,
+                onClick = { onEnabledChange(false) }
             )
         }
-        Spacer(Modifier.width(12.dp))
-        Switch(
-            checked = enabled,
-            onCheckedChange = onEnabledChange,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = colors.onPrimary,
-                checkedTrackColor = colors.primary,
-                uncheckedThumbColor = colors.onSurface.copy(alpha = .7f),
-                uncheckedTrackColor = colors.surfaceVariant,
-                uncheckedBorderColor = colors.outline.copy(alpha = .65f)
-            )
+    }
+}
+
+@Composable
+private fun RowScope.LinkReceiverOption(label: String, selected: Boolean, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val interactionSource = remember { MutableInteractionSource() }
+    Box(
+        modifier = Modifier
+            .weight(1f)
+            .fillMaxHeight()
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            color = if (selected) colors.primary else colors.onSurface.copy(alpha = .58f),
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            fontSize = 16.sp
         )
     }
 }
